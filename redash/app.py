@@ -21,6 +21,23 @@ class Redash(Flask):
         # Configure Redash using our settings
         self.config.from_object("redash.settings")
 
+    def add_url_rule(
+        self,
+        rule,
+        endpoint=None,
+        view_func=None,
+        provide_automatic_options=None,
+        **options
+    ):
+        prefixed_rule = settings.REDASH_APPLICATION_ROOT + rule
+        super(Redash, self).add_url_rule(
+            prefixed_rule,
+            endpoint=endpoint,
+            view_func=view_func,
+            provide_automatic_options=provide_automatic_options,
+            **options
+        )
+
 
 def create_app():
     from . import (

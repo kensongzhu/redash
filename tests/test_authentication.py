@@ -4,6 +4,8 @@ import time
 
 from flask import request
 from mock import patch
+from sqlalchemy.orm.exc import NoResultFound
+
 from redash import models, settings
 from redash.authentication import (
     api_key_load_user_from_request,
@@ -12,8 +14,6 @@ from redash.authentication import (
     sign,
 )
 from redash.authentication.google_oauth import create_and_login_user, verify_profile
-from redash.utils import utcnow
-from sqlalchemy.orm.exc import NoResultFound
 from tests import BaseTestCase
 
 
@@ -26,10 +26,10 @@ class TestApiKeyAuthentication(BaseTestCase):
         self.api_key = "10"
         self.query = self.factory.create_query(api_key=self.api_key)
         models.db.session.flush()
-        self.query_url = "/{}/api/queries/{}".format(
-            self.factory.org.slug, self.query.id
+        self.query_url = "{}/{}/api/queries/{}".format(
+            self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug, self.query.id
         )
-        self.queries_url = "/{}/api/queries".format(self.factory.org.slug)
+        self.queries_url = "{}/{}/api/queries".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug)
 
     def test_no_api_key(self):
         with self.app.test_client() as c:
@@ -98,7 +98,8 @@ class TestHMACAuthentication(BaseTestCase):
         self.api_key = "10"
         self.query = self.factory.create_query(api_key=self.api_key)
         models.db.session.flush()
-        self.path = "/{}/api/queries/{}".format(self.query.org.slug, self.query.id)
+        self.path = "{}/{}/api/queries/{}".format(self.app.config["REDASH_APPLICATION_ROOT"], self.query.org.slug,
+                                                  self.query.id)
         self.expires = time.time() + 1800
 
     def signature(self, expires):
@@ -131,14 +132,14 @@ class TestHMACAuthentication(BaseTestCase):
     def test_no_query_id(self):
         with self.app.test_client() as c:
             rv = c.get(
-                "/{}/api/queries".format(self.query.org.slug),
+                "{}/{}/api/queries".format(self.app.config["REDASH_APPLICATION_ROOT"], self.query.org.slug),
                 query_string={"api_key": self.api_key},
             )
             self.assertIsNone(hmac_load_user_from_request(request))
 
     def test_user_api_key(self):
         user = self.factory.create_user(api_key="user_key")
-        path = "/api/queries/"
+        path = "{}/api/queries/".format(self.app.config["REDASH_APPLICATION_ROOT"])
         models.db.session.flush()
 
         signature = sign(user.api_key, path, self.expires)
@@ -240,14 +241,16 @@ class TestVerifyProfile(BaseTestCase):
 
 class TestGetLoginUrl(BaseTestCase):
     def test_when_multi_org_enabled_and_org_exists(self):
-        with self.app.test_request_context("/{}/".format(self.factory.org.slug)):
+        with self.app.test_request_context(
+            "{}/{}/".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug)):
             self.assertEqual(
-                get_login_url(next=None), "/{}/login".format(self.factory.org.slug)
+                get_login_url(next=None),
+                "{}/{}/login".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug)
             )
 
     def test_when_multi_org_enabled_and_org_doesnt_exist(self):
         with self.app.test_request_context(
-            "/{}_notexists/".format(self.factory.org.slug)
+            "{}/{}_notexists/".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug)
         ):
             self.assertEqual(get_login_url(next=None), "/")
 
@@ -265,7 +268,8 @@ class TestRedirectToUrlAfterLoggingIn(BaseTestCase):
             org=self.factory.org,
         )
         self.assertEqual(
-            response.location, "http://localhost/{}/".format(self.user.org.slug)
+            response.location,
+            "http://localhost/{}/{}/".format(self.app.config["REDASH_APPLICATION_ROOT"].strip("/"), self.user.org.slug)
         )
 
     def test_simple_path_in_next_param(self):
@@ -274,7 +278,8 @@ class TestRedirectToUrlAfterLoggingIn(BaseTestCase):
             data={"email": self.user.email, "password": self.password},
             org=self.factory.org,
         )
-        self.assertEqual(response.location, "http://localhost/default/queries")
+        self.assertEqual(response.location, "http://localhost/{}/default/queries".format(
+            self.app.config["REDASH_APPLICATION_ROOT"].strip("/")))
 
     def test_starts_scheme_url_in_next_param(self):
         response = self.post_request(
@@ -282,7 +287,8 @@ class TestRedirectToUrlAfterLoggingIn(BaseTestCase):
             data={"email": self.user.email, "password": self.password},
             org=self.factory.org,
         )
-        self.assertEqual(response.location, "http://localhost/default/")
+        self.assertEqual(response.location,
+                         "http://localhost/{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"].strip("/")))
 
     def test_without_scheme_url_in_next_param(self):
         response = self.post_request(
@@ -290,7 +296,8 @@ class TestRedirectToUrlAfterLoggingIn(BaseTestCase):
             data={"email": self.user.email, "password": self.password},
             org=self.factory.org,
         )
-        self.assertEqual(response.location, "http://localhost/default/")
+        self.assertEqual(response.location,
+                         "http://localhost/{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"].strip("/")))
 
     def test_without_scheme_with_path_url_in_next_param(self):
         response = self.post_request(

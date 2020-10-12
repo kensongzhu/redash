@@ -1,8 +1,8 @@
-import os
 import datetime
 import logging
-from unittest import TestCase
+import os
 from contextlib import contextmanager
+from unittest import TestCase
 
 os.environ["REDASH_REDIS_URL"] = os.environ.get(
     "REDASH_REDIS_URL", "redis://localhost:6379/0"
@@ -25,9 +25,8 @@ os.environ["REDASH_ENFORCE_CSRF"] = "false"
 from redash import limiter, redis_connection
 from redash.app import create_app
 from redash.models import db
-from redash.utils import json_dumps, json_loads
+from redash.utils import json_dumps
 from tests.factories import Factory, user_factory
-
 
 logging.disable(logging.INFO)
 logging.getLogger("metrics").setLevel(logging.ERROR)
@@ -85,7 +84,8 @@ class BaseTestCase(TestCase):
             org = self.factory.org
 
         if org is not False:
-            path = "/{}{}".format(org.slug, path)
+            # path = "/{}{}".format(org.slug, path)
+            path = "{}/{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], org.slug, path)
 
         if user:
             authenticate_request(self.client, user)
@@ -112,13 +112,15 @@ class BaseTestCase(TestCase):
 
     def get_request(self, path, org=None, headers=None):
         if org:
-            path = "/{}{}".format(org.slug, path)
+            # path = "/{}{}".format(org.slug, path)
+            path = "{}/{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], org.slug, path)
 
         return self.client.get(path, headers=headers)
 
     def post_request(self, path, data=None, org=None, headers=None):
         if org:
-            path = "/{}{}".format(org.slug, path)
+            # path = "/{}{}".format(org.slug, path)
+            path = "{}/{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], org.slug, path)
 
         return self.client.post(path, data=data, headers=headers)
 

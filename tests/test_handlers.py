@@ -1,9 +1,9 @@
 from flask_login import current_user
 from funcy import project
 from mock import patch
-from tests import BaseTestCase, authenticated_user
 
 from redash import models, settings
+from tests import BaseTestCase, authenticated_user
 
 
 class AuthenticationTestMixin(object):
@@ -23,26 +23,26 @@ class TestAuthentication(BaseTestCase):
         with self.client as c:
             with c.session_transaction() as sess:
                 sess["user_id"] = self.factory.user.get_id()
-            rv = self.client.get("/default/")
+            rv = self.client.get("{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"]))
 
             self.assertEqual(200, rv.status_code)
 
     def test_redirects_for_nonsigned_in_user(self):
-        rv = self.client.get("/default/")
+        rv = self.client.get("{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"]))
         self.assertEqual(302, rv.status_code)
 
     def test_redirects_for_invalid_session_identifier(self):
         with self.client as c:
             with c.session_transaction() as sess:
                 sess["user_id"] = 100
-            rv = self.client.get("/default/")
+            rv = self.client.get("{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"]))
 
             self.assertEqual(302, rv.status_code)
 
 
 class PingTest(BaseTestCase):
     def test_ping(self):
-        rv = self.client.get("/ping")
+        rv = self.client.get("{}/ping".format(self.app.config["REDASH_APPLICATION_ROOT"]))
         self.assertEqual(200, rv.status_code)
         self.assertEqual(b"PONG.", rv.data)
 
@@ -59,12 +59,14 @@ class IndexTest(BaseTestCase):
 
     def test_redirect_to_login_when_not_authenticated(self):
         for path in self.paths:
-            rv = self.client.get(path)
+            _path = "{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], path)
+            rv = self.client.get(_path)
             self.assertEqual(302, rv.status_code)
 
     def test_returns_content_when_authenticated(self):
         for path in self.paths:
-            rv = self.make_request("get", path, org=False, is_json=False)
+            _path = "{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], path)
+            rv = self.make_request("get", _path, org=False, is_json=False)
             self.assertEqual(200, rv.status_code)
 
 
@@ -72,17 +74,19 @@ class StatusTest(BaseTestCase):
     def test_returns_data_for_super_admin(self):
         admin = self.factory.create_admin()
         models.db.session.commit()
+        path = "{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], "/status.json")
         rv = self.make_request(
-            "get", "/status.json", org=False, user=admin, is_json=False
+            "get", path, org=False, user=admin, is_json=False
         )
         self.assertEqual(rv.status_code, 200)
 
     def test_returns_403_for_non_admin(self):
-        rv = self.make_request("get", "/status.json", org=False, is_json=False)
+        path = "{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], "/status.json")
+        rv = self.make_request("get", path, org=False, is_json=False)
         self.assertEqual(rv.status_code, 403)
 
     def test_redirects_non_authenticated_user(self):
-        rv = self.client.get("/status.json")
+        rv = self.client.get("{}{}".format(self.app.config["REDASH_APPLICATION_ROOT"], "/status.json"))
         self.assertEqual(rv.status_code, 302)
 
 
@@ -98,7 +102,7 @@ class TestLogin(BaseTestCase):
         self.factory.org.set_setting("auth_password_login_enabled", True)
 
     def test_get_login_form(self):
-        rv = self.client.get("/default/login")
+        rv = self.client.get("{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]))
         self.assertEqual(rv.status_code, 200)
 
     def test_get_login_form_remote_auth(self):
@@ -109,13 +113,16 @@ class TestLogin(BaseTestCase):
         try:
             settings.REMOTE_USER_LOGIN_ENABLED = True
             settings.LDAP_LOGIN_ENABLED = True
-            rv = self.client.get("/default/login")
+            rv = self.client.get("{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]))
+            print(rv.data.decode())
             self.assertEqual(rv.status_code, 200)
             self.assertIn(
-                "/{}/remote_user/login".format(self.factory.org.slug), rv.data.decode()
+                "{}/{}/remote_user/login".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug),
+                rv.data.decode()
             )
             self.assertIn(
-                "/{}/ldap/login".format(self.factory.org.slug), rv.data.decode()
+                "{}/{}/ldap/login".format(self.app.config["REDASH_APPLICATION_ROOT"], self.factory.org.slug),
+                rv.data.decode()
             )
         finally:
             settings.REMOTE_USER_LOGIN_ENABLED = old_remote_user_enabled
@@ -124,7 +131,8 @@ class TestLogin(BaseTestCase):
     def test_submit_non_existing_user(self):
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login", data={"email": "arik", "password": "password"}
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
+                data={"email": "arik", "password": "password"}
             )
             self.assertEqual(rv.status_code, 200)
             self.assertFalse(login_user_mock.called)
@@ -138,7 +146,8 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login", data={"email": user.email, "password": "password"}
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
+                data={"email": user.email, "password": "password"}
             )
             self.assertEqual(rv.status_code, 302)
             login_user_mock.assert_called_with(user, remember=False)
@@ -152,7 +161,7 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login",
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
                 data={"email": user.email.upper(), "password": "password"},
             )
             self.assertEqual(rv.status_code, 302)
@@ -167,7 +176,7 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login",
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
                 data={"email": user.email, "password": "password", "remember": True},
             )
             self.assertEqual(rv.status_code, 302)
@@ -182,7 +191,7 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login?next=/test",
+                "{}/default/login?next=/test".format(self.app.config["REDASH_APPLICATION_ROOT"]),
                 data={"email": user.email, "password": "password"},
             )
             self.assertEqual(rv.status_code, 302)
@@ -192,7 +201,8 @@ class TestLogin(BaseTestCase):
     def test_submit_incorrect_user(self):
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login", data={"email": "non-existing", "password": "password"}
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
+                data={"email": "non-existing", "password": "password"}
             )
             self.assertEqual(rv.status_code, 200)
             self.assertFalse(login_user_mock.called)
@@ -206,7 +216,7 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login",
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
                 data={"email": user.email, "password": "badbadpassword"},
             )
             self.assertEqual(rv.status_code, 200)
@@ -217,7 +227,8 @@ class TestLogin(BaseTestCase):
 
         with patch("redash.handlers.authentication.login_user") as login_user_mock:
             rv = self.client.post(
-                "/default/login", data={"email": user.email, "password": ""}
+                "{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]),
+                data={"email": user.email, "password": ""}
             )
             self.assertEqual(rv.status_code, 200)
             self.assertFalse(login_user_mock.called)
@@ -226,7 +237,7 @@ class TestLogin(BaseTestCase):
         with authenticated_user(self.client), patch(
             "redash.handlers.authentication.login_user"
         ) as login_user_mock:
-            rv = self.client.get("/default/login")
+            rv = self.client.get("{}/default/login".format(self.app.config["REDASH_APPLICATION_ROOT"]))
             self.assertEqual(rv.status_code, 302)
             self.assertFalse(login_user_mock.called)
 
@@ -234,15 +245,15 @@ class TestLogin(BaseTestCase):
 class TestLogout(BaseTestCase):
     def test_logout_when_not_loggedin(self):
         with self.app.test_client() as c:
-            rv = c.get("/default/logout")
+            rv = c.get("{}/default/logout".format(self.app.config["REDASH_APPLICATION_ROOT"]))
             self.assertEqual(rv.status_code, 302)
             self.assertFalse(current_user.is_authenticated)
 
     def test_logout_when_loggedin(self):
         with self.app.test_client() as c, authenticated_user(c, user=self.factory.user):
-            rv = c.get("/default/")
+            rv = c.get("{}/default/".format(self.app.config["REDASH_APPLICATION_ROOT"]))
             self.assertTrue(current_user.is_authenticated)
-            rv = c.get("/default/logout")
+            rv = c.get("{}/default/logout".format(self.app.config["REDASH_APPLICATION_ROOT"]))
             self.assertEqual(rv.status_code, 302)
             self.assertFalse(current_user.is_authenticated)
 
